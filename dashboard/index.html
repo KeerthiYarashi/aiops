@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verify Ops</title>
+  <style>
+    body { font: 16px "Segoe UI", sans-serif; background: #111922; color: #edf4fa; margin: 0; }
+    main { max-width: 1024px; margin: auto; padding: 36px 20px; }
+    h1 { margin: 0 0 8px; }
+    h2 { font-size: 20px; margin-top: 32px; }
+    a { color: #93d8ff; }
+    #status { color: #a8e4ce; }
+    article { border: 1px solid #354858; border-radius: 8px; padding: 14px; margin: 10px 0; }
+    article p { margin: 6px 0; }
+    small { color: #b4c7d9; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Verify Ops</h1>
+  <p id="status" role="status">Loading detector status</p>
+  <a href="/docs">API documentation</a>
+  <h2>Live findings</h2>
+  <div id="incidents"></div>
+  <h2>Fault experiments and recovery</h2>
+  <div id="evaluations"></div>
+</main>
+<script>
+  function render(id, rows, describe, empty) {
+    const container = document.getElementById(id);
+    container.replaceChildren();
+    if (!rows.length) {
+      container.textContent = empty;
+      return;
+    }
+    for (const row of rows) {
+      const card = document.createElement("article");
+      for (const line of describe(row)) {
+        const paragraph = document.createElement("p");
+        paragraph.textContent = line;
+        card.append(paragraph);
+      }
+      container.append(card);
+    }
+  }
+
+  async function read(path) {
+    const response = await fetch(path, {cache: "no-store"});
+    if (!response.ok) throw new Error(path);
+    return response.json();
+  }
+
+  async function refresh() {
+    const status = document.getElementById("status");
+    try {
+      const [live, saved] = await Promise.all([read("/incidents"), read("/evaluations")]);
+      status.textContent = "Detector · " + live.detector_status.replaceAll("_", " ");
+      render("incidents", live.incidents, row => [
+        new Date(row.detected_at).toLocaleString(),
+        ...row.candidates.map(c => c.dependency + " · " + c.new_errors + " new errors"),
+      ], "No findings since the API started.");
+      render("evaluations", saved.evaluations, row => [
+        row.fault + " · " + row.report,
+        "Expected " + row.expected + " · Ranked " + (row.top_ranked ?? "none"),
+        ...row.actions.map(a => [
+          (a.action ?? "No action") + " · " + a.execution + " · " + a.verification.verdict,
+          a.diagnosis.reason,
+        ]).flat(),
+      ], "No saved experiments.");
+    } catch {
+      status.textContent = "Could not refresh results. Retrying shortly.";
+    } finally {
+      setTimeout(refresh, 5000);
+    }
+  }
+  refresh();
+</script>
+</body>
+</html>

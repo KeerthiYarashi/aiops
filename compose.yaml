@@ -1,0 +1,49 @@
+name: verify-ops
+
+services:
+  api:
+    build: .
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      PROMETHEUS_URL: http://prometheus:9090
+      LOG_FILE: /app/logs/app.jsonl
+      VERIFY_OPS_EVALUATION_DIR: /app/evaluation
+    volumes:
+      - ./logs:/app/logs
+      - ./evaluation:/app/evaluation:ro
+    ports:
+      - "127.0.0.1:${VERIFY_OPS_PORT:-8002}:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 1s
+      retries: 10
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./observability/grafana:/etc/grafana/provisioning:ro
+      - ./observability/dashboard.json:/var/lib/grafana/dashboards/verify-ops.json:ro
+  locust:
+    image: locustio/locust
+    profiles: ["traffic"]
+    ports:
+      - "127.0.0.1:8089:8089"
+    volumes:
+      - ./chaos/locustfile.py:/mnt/locust/locustfile.py:ro
+    command: ["-f", "/mnt/locust/locustfile.py", "--host", "http://api:8000", "--autostart", "-u", "2", "-r", "1"]
+    depends_on:
+      - api

@@ -1,0 +1,19 @@
+groups:
+  - name: verify-ops
+    rules:
+      - alert: VerifyOpsCatalogErrors
+        expr: sum(increase(downstream_calls_total{job="verify-ops",dependency="catalog-service",outcome="error"}[30s])) > 0
+        annotations:
+          summary: Catalog calls are failing
+      - alert: VerifyOpsRedisCacheErrors
+        expr: sum(increase(cache_request_total{job="verify-ops",outcome="error"}[30s])) > 0
+        annotations:
+          summary: Redis cache operations are failing
+      - alert: VerifyOpsItemReadErrors
+        expr: sum(increase(http_request_total{job="verify-ops",method="GET",endpoint="/items/{item_id}",http_status=~"5.."}[30s])) > 0
+        annotations:
+          summary: Item reads are returning server errors
+      - alert: VerifyOpsMetricsTargetDown
+        expr: up{job="verify-ops"} == 0
+        annotations:
+          summary: Prometheus cannot scrape Verify Ops metrics
